@@ -1,16 +1,38 @@
 import "server-only";
 import Redis from "ioredis";
 
-const url = process.env.REDIS_URL || "redis://localhost:6379";
+function sanitize(u: string): string {
+  try {
+    const parsed = new URL(u);
+    if (parsed.password) parsed.password = "***";
+    return parsed.toString();
+  } catch {
+    return u;
+  }
+}
+
+const url = process.env.REDIS_URL?.trim();
+
+if (!url) {
+  console.error(
+    "[redis] REDIS_URL não definida. Configure a variável de ambiente (no Vercel: " +
+      "Project → Settings → Environment Variables) e faça redeploy."
+  );
+}
+
+// Em produção exigimos REDIS_URL explícita; em dev caímos no localhost.
+const connectionUrl = url || "redis://localhost:6379";
 
 const globalForRedis = globalThis as unknown as { __redis?: Redis };
 
 export const redis =
   globalForRedis.__redis ??
-  new Redis(url, {
-    // Falha rápido em vez de enfileirar comandos quando o Redis está fora.
-    maxRetriesPerRequest: 2,
-    lazyConnect: false,
+  new Redis(connectionUrl, {
+    // Falha após algumas tentativas em vez de enfileirar comandos para sempre.
+    maxRetriesPerRequest: 3,
+    connectTimeout: 10_000,
+    retryStrategy: (times) => Math.min(times * 100, 2_000),
+    enableReadyCheck: true,
   });
 
 redis.on("error", (err) => {
@@ -18,7 +40,7 @@ redis.on("error", (err) => {
 });
 
 redis.on("connect", () => {
-  console.log("[redis] conectado em", url);
+  console.log("[redis] conectado em", sanitize(connectionUrl));
 });
 
 if (process.env.NODE_ENV !== "production") {

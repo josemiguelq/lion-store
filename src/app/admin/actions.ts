@@ -22,12 +22,21 @@ export async function createLinkAction(
     return { ok: false, error: "Duração inválida." };
   }
 
-  const { token, durationSeconds, expiresAt } = await createLink(Math.floor(raw));
+  try {
+    const { token, durationSeconds, expiresAt } = await createLink(Math.floor(raw));
 
-  return {
-    ok: true,
-    url: `${config.baseUrl}/s/${token}`,
-    label: formatDuration(durationSeconds / 60),
-    expiresAtLabel: formatDateTime(new Date(expiresAt)),
-  };
+    return {
+      ok: true,
+      url: `${config.baseUrl}/s/${token}`,
+      label: formatDuration(durationSeconds / 60),
+      expiresAtLabel: formatDateTime(new Date(expiresAt)),
+    };
+  } catch (err) {
+    console.error("[admin] falha ao criar link:", err);
+    return {
+      ok: false,
+      error:
+        "Não foi possível salvar o link no Redis. Verifique a conexão (REDIS_URL).",
+    };
+  }
 }
